@@ -7,7 +7,8 @@ Created on Mon Dec 17 16:01:18 2012
 
 import numpy as _np
 import csv as _csv
-#import pandas as pd
+import lukeaddon.temperature_supply as addon #added by Luke
+import pandas as pd
 
 if not __name__ == "__main__":
     import fileio.read as read
@@ -107,7 +108,28 @@ def load_data(case):
     
     case_data.transmission = _load_import_data(case_data)
     
+    #added by LUKE
+    case_data.add_on_bool = load_adder(case)
+    #run the loading of my script only if you want to use it, and only do it the one time
+    
+    if case_data.add_on_bool.Use_Add_On:
+        print('processing add-on because it has been input as ' + str(case_data.add_on_bool.Use_Add_On))
+        #get and create the calendar, too, since you only need that once
+        #= _np.vstack((profile.dates, load_bin_calendar)).T this is how you originally get load_bin_calendar
+        load_bin_df = pd.DataFrame(case_data.interm_calc.load_bin_calendar)
+        case_data.calendar_df = addon.create_calendar(load_bin_df, case_data)
+        #do the new copt
+        case_data.copt_output = addon.dict_supply_dists(addon.load_gen_temperatures(),case)
+                
+    #end added by LUKE
+    
     return case_data
+
+#added by Luke 11.10.18
+def load_adder(case):
+    add_on_bool = read.use_add_on(case)
+    return add_on_bool
+#end added
 
 def process_gen_row(row, power_system_scaler):
     rowdata = basicm.gm.empty_data()

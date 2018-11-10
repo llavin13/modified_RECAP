@@ -10,6 +10,24 @@ import csv as _csv
 import const.constants as const
 import basicm
 
+#below function is added by Luke 11.10.18
+def use_add_on(case):
+    add_on_bool = basicm.gm.empty_data()
+    with open(const.STARTING_DIRECTORY+'\\cases\\'+case+'\\inputs\\luke_adder.csv', 'r') as readfile:
+        csvreader = _csv.reader(readfile, delimiter = ',')
+        for row in csvreader:
+            if basicm.gm.isnumeric(row[1]):
+                setattr(add_on_bool, row[0], float(row[1]))
+            elif row[1]=='TRUE' or row[1]=='True':
+                setattr(add_on_bool, row[0], True)
+            elif row[1]=='FALSE' or row[1]=='False':
+                setattr(add_on_bool, row[0], False)
+            else:
+                setattr(add_on_bool, row[0], row[1])
+
+    return add_on_bool
+#end added
+
 def calculation_settings(case):
     calculation_settings = basicm.gm.empty_data()
     with open(const.STARTING_DIRECTORY+'\\cases\\'+case+'\\inputs\\calculation_settings.csv', 'r') as readfile:
