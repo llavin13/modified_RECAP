@@ -20,10 +20,9 @@ def load_gen_temperatures():
 #print(temp_FOR['-30C']['HD'])
 
 ## get generator stack
-def create_gen_stack_FOR(temp_FOR):
+def create_gen_stack_FOR(temp_FOR,case):
     #this is a re-load of something that's already in RECAP and could instead be passed in, but OK for now
-    gen_df = pd.read_csv(const.STARTING_DIRECTORY+'\\cases\\PJM_Test_largesolar\\inputs\\generator_module.csv')
-    
+    gen_df = pd.read_csv(const.STARTING_DIRECTORY+'\\cases\\'+str(case)+'\\inputs\\generator_module.csv')
     #assign new FORs
     for key in temp_FOR.keys():
         FOR_list = []
@@ -55,31 +54,74 @@ def outage_dist(cap, FOR, outagedist):
     return_dist[:,0]*=cap
     return basicm.pdm.space_dist(return_dist)
 
+def gen_outage_dists():
+    FOR_dists = pd.read_csv(const.STARTING_DIRECTORY+'\\cases\\availability.distributions.by.unit.type.110518.csv')
+    
+    total_out = FOR_dists['P(partial)']+FOR_dists['P(down)']
+    FOR_dists['relP(partial)']=(FOR_dists['P(partial)']/total_out)
+    FOR_dists['relP(down)']=1.-FOR_dists['relP(partial)']
+    FOR_dists['Rounded_Avg_partial']=(round(FOR_dists['Avg_partial']*2,1)/2)
+    
+    
+    FOR_increments = [.05,.1,.15,.2,.25,.3,.35,.4,.45,.5,.55,.6,.65,.7,.75,.8,.85,.9,.95,1.]
+    init_weights = [0]*len(FOR_increments)
+    
+    generator_FORdist_dict = {}
+    for index in FOR_dists.index.values:
+        FOR_dists_df = pd.DataFrame({'increment': FOR_increments, 'weight': init_weights})
+        
+        #load in the full derate percent
+        rel_down = FOR_dists.iloc[index]['relP(down)']
+        index_down = FOR_dists_df[FOR_dists_df.loc[:,'increment'] == 1.].index[0]
+        #load in partial derate percent
+        rel_partial = FOR_dists.iloc[index]['relP(partial)']
+        rounded_avg_partial = FOR_dists.iloc[index]['Rounded_Avg_partial']
+        index_partial = FOR_dists_df[FOR_dists_df.loc[:,'increment'] == rounded_avg_partial].index[0]
+    
+        #convert df to numpy array
+        FOR_dists_np = FOR_dists_df.values
+        FOR_dists_np[index_down][1] = rel_down
+        FOR_dists_np[index_partial][1] = rel_partial
+        
+        #add generator as key and this np array of outage probabilities
+        generator = FOR_dists.iloc[index][FOR_dists.columns.values[0]] 
+        generator_FORdist_dict[generator] = FOR_dists_np
+    
+    #add the POS demand response stuff at the end
+    DR_dists_df = pd.DataFrame({'increment': FOR_increments, 'weight': init_weights})
+    DR_dists_np = DR_dists_df.values
+    DR_dists_np[len(init_weights)-1][1]=1.
+    generator_FORdist_dict['DR']=DR_dists_np
+    
+    return generator_FORdist_dict
 
 def gen_dists(month,temperature,gen_df):
     #creates full temperature-dependent FOR distributions for generators
-    
+
     #manual FOR dist to be assigned to generators from input gen_df for now
-    manual_outage_dist = _np.array([[.05, 0.16887827],
-     [.1, 0.11924128],
-     [.15, 0.05676093],
-     [.2, 0.0660266],
-     [.25, 0.0441866],
-     [.3, 0.030344],
-     [.35, 0.02460712],
-     [.4, 0.02042499],
-     [.45, 0.02162338],
-     [.5, 0.02205312],
-     [.55, 0.04304062],
-     [.6, 0.00962204],
-     [.65, 0.0061247],
-     [.7, 0.00523377],
-     [.75, 0.00321084],
-     [.8, 0.00336457],
-     [.85, 0.00405984],
-     [.9,0.01485232],
-     [.95,0.00916784],
-     [1.,0.32717719]])
+    #NO LONGER USED (11.10.18)
+    #manual_outage_dist = _np.array([[.05, 0.16887827],
+    # [.1, 0.11924128],
+    # [.15, 0.05676093],
+    # [.2, 0.0660266],
+    # [.25, 0.0441866],
+    # [.3, 0.030344],
+    # [.35, 0.02460712],
+    # [.4, 0.02042499],
+    # [.45, 0.02162338],
+    # [.5, 0.02205312],
+    # [.55, 0.04304062],
+    # [.6, 0.00962204],
+    # [.65, 0.0061247],
+    # [.7, 0.00523377],
+    # [.75, 0.00321084],
+    # [.8, 0.00336457],
+    # [.85, 0.00405984],
+    # [.9,0.01485232],
+    # [.95,0.00916784],
+    # [1.,0.32717719]])
+    
+    by_gentype_dists = gen_outage_dists()
     
     gendata_temp = []
     for gen in range(len(gen_df.index)):
@@ -88,7 +130,8 @@ def gen_dists(month,temperature,gen_df):
         if gen_df.iloc[gen][month]<.5:
             dist = _np.array([1.])
         else:
-            dist = outage_dist(gen_df.iloc[gen][month], gen_df.iloc[gen][temperature], manual_outage_dist)
+            gen_type = gen_df.iloc[gen]['Category']
+            dist = outage_dist(gen_df.iloc[gen][month], gen_df.iloc[gen][temperature], by_gentype_dists[gen_type])
             dist = _np.hstack((_np.zeros(int(min(dist[:,0]))), dist[:,1]))
             assert round(sum(dist),6)==1.
         gendata_temp.append(dist)
@@ -114,25 +157,25 @@ def copt_calc(gens):
 #copt_calc(gen_dists('Jun','-30C'))
 
 #this runs everything and wraps it as a dict of dicts, but takes a little while
-def dict_supply_dists(temp_FOR):
+def dict_supply_dists(temp_FOR,case):
     copt_output = {}
     count = 0
-    gen_df = create_gen_stack_FOR(temp_FOR)
+    gen_df = create_gen_stack_FOR(temp_FOR,case)
     for month in ['Jan','Jul']: #one winter, one summer
         copt_output[month] = {}
         for temperature in temp_FOR.keys():
             count+=1
-            print("month-hour temp combo add count: "+str(count))
+            print("processing month-hour temp combo:"+str(count))
             copt_output[month][temperature]=copt_calc(gen_dists(month,temperature,gen_df))
     return copt_output
 
 
 
 
-def create_calendar(bin_df):
+def create_calendar(bin_df, case_data):
     #bin_df should pass in a pandas df of the Excel datetime in the first column and a bin float in the 2nd
     #calendar = pd.read_csv(const.STARTING_DIRECTORY+'\\cases\\load_bin_cal.csv')
-    #print(bin_df)
+
     calendar = bin_df
     #create needed columns
     calendar.columns = ['Excel_Date','Bin']
@@ -156,10 +199,18 @@ def create_calendar(bin_df):
     #Right now averages Philly, DC, Cleveland, and Chicago cols
     temp_cols = calendar.loc[: , "Philadelphia":"Chicago"]
     calendar['Mean_T'] = temp_cols.mean(axis=1)
-    
+
+    #This ithe climate-related add on
+    #Note this ONLY affects the generator FORs, it DOES NOT affect the loads
+    print ('Climate Case is ' + str(case_data.add_on_bool.Is_Climate_Case))
+    if case_data.add_on_bool.Is_Climate_Case:
+        calendar['Mean_T'] += calendar['Climate_Hourly_Shape']*case_data.add_on_bool.Degrees_Warming
+        print('degrees C of increased temperature is ' + str(case_data.add_on_bool.Degrees_Warming))
+        print('note this temp increase only affects generator outages, not loads')
+
     #round avg temp nearest 5, int(), string it with the C so it'll match the other inputs
     #note implicitly temps rounded to 45C+ or -35C- will break this approach
-    calendar['T_string']=calendar.Mean_T.apply(lambda x: str(int(5*round(float(x)/5)))+"C")
+    calendar['T_string']=calendar.Mean_T.apply(lambda x: str(min(int(5*round(float(x)/5)),40))+"C")
     
     #return resulting pandas df
     return calendar
