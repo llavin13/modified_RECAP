@@ -18,7 +18,7 @@ def bin_primary_load_profile(case_data, profile):
 
     
     relevant_calendar = _gm.relevant_calendar_short(profile.dates)[:,1:]
-    
+
     for day_type in _gm.combination([range(1,13), range(2)]):
         calendar_bool = _np.all(day_type==relevant_calendar, axis = 1)
         load_slice = rehapedload[calendar_bool]
@@ -76,7 +76,7 @@ def hist_time_series_vg(case_data, profile, correlation, capacity, weekdaymatter
                     bins[m, h, dt, ll] = bins[m, h, dt, 1]
     else:
         relevant_calendar = _gm.relevant_calendar_long(profile.dates)[:,1::2]
-        
+
         for m, h in _gm.combination([range(1,13), range(1,25)]):
             calendar_bool = _np.all([m, h]==relevant_calendar, axis = 1)
             

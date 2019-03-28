@@ -117,8 +117,12 @@ class powersystem:
         return keys[index]
     
     def LOLE(self):
-        return _np.sum(self.lolp_table*const.LOLP_TABLE_WEIGHTS)
- 
+        #this definition is changed by Luke 3.23.19
+        #return _np.sum(self.lolp_table*const.LOLP_TABLE_WEIGHTS)
+        test_array = self.lolp_table*const.LOLP_TABLE_WEIGHTS
+        return _np.sum(test_array.max(axis=1))
+        
+    
     def ALOLP(self):
         return 1-(_np.prod((1-self.lolp_table)**const.LOLP_TABLE_WEIGHTS))
         

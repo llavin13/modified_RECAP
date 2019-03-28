@@ -95,7 +95,7 @@ def gen_outage_dists():
     
     return generator_FORdist_dict
 
-def gen_dists(month,temperature,gen_df):
+def gen_dists(month,temperature, gen_df, maintenance_schedule):
     #creates full temperature-dependent FOR distributions for generators
 
     #manual FOR dist to be assigned to generators from input gen_df for now
@@ -127,14 +127,28 @@ def gen_dists(month,temperature,gen_df):
     for gen in range(len(gen_df.index)):
         if max(gen_df.iloc[gen][3:15])<1.: #mimics skipping of small generators in main RECAP
             continue
+        #cap = rowdata.cap[m-1]*(1-rowdata.maint[m-1]*(maintenance_schedule=="Ideal"))
+        month_maint = str(month) + '.2' #for getting scheduled outage fraction
+        cap = gen_df.iloc[gen][month]*(1-gen_df.iloc[gen][month_maint]*float(maintenance_schedule=="Ideal"))
         if gen_df.iloc[gen][month]<.5:
             dist = _np.array([1.])
         else:
             gen_type = gen_df.iloc[gen]['Category']
-            dist = outage_dist(gen_df.iloc[gen][month], gen_df.iloc[gen][temperature], by_gentype_dists[gen_type])
+            dist = outage_dist(cap, gen_df.iloc[gen][temperature], by_gentype_dists[gen_type])
+                        
+            #if maintenance_schedule=="Random" and (rowdata.maintdist is not None):
+            #    dist = basicm.pdm.limit_dist1_by_dist2(outage_dist(cap, rowdata.maint[m-1], outagedist[rowdata.maintdist]),dist)
+            #a bit hacky, but my approach is the underlying generator outage dist for maintenance is only two-state, which I can 
+            #force by making it DR. I also don't check if it's blank first. 
+            if maintenance_schedule=="Random":
+                print('testing random')
+                dist = basicm.pdm.limit_dist1_by_dist2(outage_dist(cap, gen_df.iloc[gen][month_maint], by_gentype_dists['DR']), dist)
+            
             dist = _np.hstack((_np.zeros(int(min(dist[:,0]))), dist[:,1]))
             assert round(sum(dist),6)==1.
+            
         gendata_temp.append(dist)
+        
     return(gendata_temp)
 
 def copt_calc(gens):
@@ -157,20 +171,18 @@ def copt_calc(gens):
 #copt_calc(gen_dists('Jun','-30C'))
 
 #this runs everything and wraps it as a dict of dicts, but takes a little while
-def dict_supply_dists(temp_FOR,case):
+def dict_supply_dists(temp_FOR,case,maintenance_schedule):
     copt_output = {}
     count = 0
     gen_df = create_gen_stack_FOR(temp_FOR,case)
-    for month in ['Jan','Jul']: #one winter, one summer
+    month_list = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    for month in month_list: #one winter, one spring, one summer, one fall
         copt_output[month] = {}
         for temperature in temp_FOR.keys():
             count+=1
-            print("processing month-hour temp combo:"+str(count))
-            copt_output[month][temperature]=copt_calc(gen_dists(month,temperature,gen_df))
+            print("processing month-hour temp combo: "+month+","+temperature)
+            copt_output[month][temperature]=copt_calc(gen_dists(month,temperature,gen_df,maintenance_schedule))
     return copt_output
-
-
-
 
 def create_calendar(bin_df, case_data):
     #bin_df should pass in a pandas df of the Excel datetime in the first column and a bin float in the 2nd
@@ -219,10 +231,12 @@ def timeslice_supply(supply_dict,input_df,m,h,dt,ll):
     time_slice = input_df[(input_df['Bin']==ll) & (input_df['month']==m) & (input_df['hour']==h) & (input_df['weekend']==dt)]
     timeslice_weights = time_slice['T_string'].value_counts(normalize=True)
     
-    if m>=5 and m<=9: #define summer months; janky for now
-        time_str = 'Jul' #should probably pass month keys of supply_dict here
-    else:
-        time_str = 'Jan'
+    month_list = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    time_str = month_list[m-1]
+    #if m>=5 and m<=9: #define summer months; janky for now
+    #    time_str = 'Jul' #should probably pass month keys of supply_dict here
+    #else:
+    #    time_str = 'Jan'
         
     count=0
     for key in supply_dict[time_str].keys():

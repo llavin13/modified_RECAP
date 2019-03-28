@@ -65,7 +65,7 @@ def run_create_normal_or_gumbel(bins, case_data, minimum_load):
 
 def run_create_raw_hist(bins, case_data, minimum_load):
     load_bins = case_data.calculation_settings.load_bins
-    for item in bins.iteritems():
+    for item in bins.items():
         bins[item[0]] = basicm.pdm.create_histogram(item[1])
         bins[item[0]][:,1]*=(_np.diff(load_bins[item[0][-1]])/100.)
     return bins

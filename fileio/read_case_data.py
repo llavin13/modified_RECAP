@@ -119,7 +119,7 @@ def load_data(case):
         load_bin_df = pd.DataFrame(case_data.interm_calc.load_bin_calendar)
         case_data.calendar_df = addon.create_calendar(load_bin_df, case_data)
         #do the new copt
-        case_data.copt_output = addon.dict_supply_dists(addon.load_gen_temperatures(),case)
+        case_data.copt_output = addon.dict_supply_dists(addon.load_gen_temperatures(),case,case_data.calculation_settings.maintenance_schedule)
                 
     #end added by LUKE
     

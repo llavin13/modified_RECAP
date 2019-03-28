@@ -32,47 +32,53 @@ def copt_calc(case_data, zone, month):
     min_capacity = min(_np.nonzero(_np.cumsum(COPT)>const.LOW_PROB_CUT)[0])
     COPT/=sum(COPT)
     
-    #print("call")
-    #print (_np.vstack((_np.arange(min_capacity,len(COPT)),COPT[min_capacity:])).T)
     return _np.vstack((_np.arange(min_capacity,len(COPT)),COPT[min_capacity:])).T
 
 
 def zone_gen(case_data, zone):
     gen = {}
     
-    #initialize use of add on
-    Luke_method = True
-    print("right now use of alternative method is " +str(Luke_method))
+    #check initialization of use of add on 
+    #Luke_method = True
+    print("right now use of alternative method is " +str(case_data.add_on_bool.Use_Add_On))
 
     for m in case_data.interm_calc.timeslicelist[0]:
         conv = _np.array([[0,1]], dtype = 'f8')
         
         #if case_data.gendata.units.has_key(zone):
         if zone in case_data.gendata.units:
-            
+            conv = copt_calc(case_data, zone, m)
             #make a call for the Luke-input COPT in the first month
-            if m==1 and Luke_method:
+            #if m==1 and Luke_method:
                 #create a dict of dicts of seasonal temperature-dependent supply availability (in MW)
-                copt_output = addon.dict_supply_dists(addon.load_gen_temperatures())
+            #    copt_output = addon.dict_supply_dists(addon.load_gen_temperatures())
                     
                 #get and create the calendar, too, since you only need that once
                 #= _np.vstack((profile.dates, load_bin_calendar)).T this is how you originally get load_bin_calendar
-                load_bin_df = pd.DataFrame(case_data.interm_calc.load_bin_calendar)
-                calendar_df = addon.create_calendar(load_bin_df)
+            #    load_bin_df = pd.DataFrame(case_data.interm_calc.load_bin_calendar)
+            #    calendar_df = addon.create_calendar(load_bin_df)
             #otherwise do what the tool normally does
-            else:
-                conv = copt_calc(case_data, zone, m)
+            #else:
+            #    conv = copt_calc(case_data, zone, m)
             
         for h, dt, ll in _basicm.gm.combination(case_data.interm_calc.timeslicelist[1:]):        
             
             #also force to only do this if the zone is the main zone (PJM)
-            if Luke_method and zone in case_data.gendata.units:
+            if case_data.add_on_bool.Use_Add_On and zone in case_data.gendata.units:
                 #print(zone,m,h,dt,ll)
-                gen[m, h, dt, ll] = addon.timeslice_supply(copt_output,calendar_df,m,h-1,dt,ll)
+                gen[m, h, dt, ll] = addon.timeslice_supply(case_data.copt_output,case_data.calendar_df,m,h-1,dt,ll)
+                
             #otherwise do what tool normally does
             else:
                 gen[m, h, dt, ll] = conv
             
+            #print this bs
+            #if m==7 and h==16 and dt==0 and ll==3 and zone in case_data.gendata.units:
+            #    print('we are in!!')
+            #    df = pd.DataFrame(gen[m,h,dt,ll])
+            #    print(df)
+            #    df.to_csv('supply_pdf.csv')
+            #    print('writing happened')
     return gen
 
 def independent_zone_net_gen(case_data, include_supply_vg=True):
